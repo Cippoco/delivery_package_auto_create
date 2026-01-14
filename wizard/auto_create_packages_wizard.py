@@ -9,16 +9,25 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
     _name = "delivery.auto.create.packages.wizard"
     _description = "Assign move quantities to quants/lots and put everything in ONE existing destination package"
 
-    sequence = fields.Integer(default=10)
+    # sequence = fields.Integer(default=10)
+    # state = fields.Selection([
+    #     ('draft', 'New'),
+    #     ('waiting', 'Waiting Another Move'),
+    #     ('confirmed', 'Waiting Availability'),
+    #     ('partially_available', 'Partially Available'),
+    #     ('assigned', 'Available'),
+    #     ('done', 'Done'),
+    #     ('cancel', 'Cancelled')], string='Status',
+    #     copy=False, default='draft', index=True, readonly=True,
+    #     help="* New: The stock move is created but not confirmed.\n"
+    #          "* Waiting Another Move: A linked stock move should be done before this one.\n"
+    #          "* Waiting Availability: The stock move is confirmed but the product can't be reserved.\n"
+    #          "* Available: The product of the stock move is reserved.\n"
+    #          "* Done: The product has been transferred and the transfer has been confirmed.")
     # company_id = fields.Many2one(
-    #     "res.company",
-    #     related="move_id.company_id",
-    #     readonly=True,
-    # )
-    company_id = fields.Many2one(
-        'res.company', 'Company',
-        default=lambda self: self.env.company,
-        index=True, required=True)
+    #     'res.company', 'Company',
+    #     default=lambda self: self.env.company,
+    #     index=True, required=True)
 
     package_id = fields.Many2one(
         'stock.quant.package', 'Source Package', ondelete='restrict',
