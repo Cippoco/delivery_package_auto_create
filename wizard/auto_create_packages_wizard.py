@@ -10,6 +10,15 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
     _description = "Assign move quantities to quants/lots and put everything in ONE existing destination package"
 
     sequence = fields.Integer(default=10)
+    # company_id = fields.Many2one(
+    #     "res.company",
+    #     related="move_id.company_id",
+    #     readonly=True,
+    # )
+    company_id = fields.Many2one(
+        'res.company', 'Company',
+        default=lambda self: self.env.company,
+        index=True, required=True)
 
     package_id = fields.Many2one(
         'stock.quant.package', 'Source Package', ondelete='restrict',
@@ -20,14 +29,6 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         'res.partner', 'From Owner',
         check_company=True, index='btree_not_null',
         help="When validating the transfer, the products will be taken from this owner.")
-
-    product_id = fields.Many2one(
-        comodel_name="product.product",
-        string="Prodotto",
-        related="move_id.product_id",
-        readonly=True,
-        store=False,
-    )
 
     move_id = fields.Many2one(
         comodel_name="stock.move",
