@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-
-from odoo import api, models, _
+from odoo import api, models
 
 
 class StockMove(models.Model):
@@ -11,10 +10,8 @@ class StockMove(models.Model):
         action = self.env.ref(
             "delivery_package_auto_create.action_delivery_auto_create_packages_wizard"
         ).read()[0]
-
-        # Passo il move corrente al wizard
-        action["context"] = dict(self.env.context or {})
-        action["context"].update({
+        action["context"] = {
+            **self.env.context,
             "default_move_id": self.id,
-        })
+        }
         return action
