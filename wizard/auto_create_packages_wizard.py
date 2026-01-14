@@ -7,17 +7,7 @@ from odoo.tools.float_utils import float_compare, float_is_zero
 
 class DeliveryAutoCreatePackagesWizard(models.TransientModel):
     _name = "delivery.auto.create.packages.wizard"
-    _description = "Auto create packages (colli) from qty per package on a stock move"
-
-    package_id = fields.Many2one(
-        'stock.quant.package', 'Source Package', ondelete='restrict',
-        check_company=True,
-        domain="[('location_id', '=', location_id)]")
-
-    owner_id = fields.Many2one(
-        'res.partner', 'From Owner',
-        check_company=True, index='btree_not_null',
-        help="When validating the transfer, the products will be taken from this owner.")
+    _description = "Auto create move lines by qty per package and put everything in one existing destination package"
 
     move_id = fields.Many2one(
         comodel_name="stock.move",
@@ -26,6 +16,7 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         readonly=True,
     )
 
+    # Related utili (per view e domini)
     product_id = fields.Many2one(
         comodel_name="product.product",
         related="move_id.product_id",
@@ -57,12 +48,12 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         store=False,
     )
 
-    qty_per_package = fields.Integer(string="Q.tà per collo", default=1, required=True)
+    qty_per_package = fields.Float(string="Q.tà per collo", default=1.0, required=True)
 
-    # Pick From (stock.quant) come UI Odoo
-    quant_id = fields.Many2one(
-        comodel_name="stock.quant",
-        string="Pick From",
+    # IMPORTANT: si seleziona un collo ESISTENTE, non si crea
+    result_package_id = fields.Many2one(
+        comodel_name="stock.quant.package",
+        string="Collo di destinazione",
         required=True,
     )
 
@@ -78,19 +69,18 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         move_id = res.get("move_id") or self.env.context.get("default_move_id")
         if move_id and "move_id" in fields_list:
             res["move_id"] = move_id
-
-        # Default quant: primo quant disponibile per prodotto nella location del move
-        if move_id and "quant_id" in fields_list and not res.get("quant_id"):
-            move = self.env["stock.move"].browse(move_id)
-            Quant = self.env["stock.quant"].sudo()
-            quant = Quant.search([
-                ("product_id", "=", move.product_id.id),
-                ("location_id", "child_of", move.location_id.id),
-                ("available_quantity", ">", 0),
-            ], limit=1)
-            if quant:
-                res["quant_id"] = quant.id
         return res
+
+    def _get_available_quants(self, move):
+        """Ritorna i quants in location sorgente con qty disponibile (>0) per il prodotto del move.
+        Niente available_quantity (non domainabile). Usiamo quantity - reserved_quantity.
+        """
+        Quant = self.env["stock.quant"].sudo()
+        return Quant.search([
+            ("product_id", "=", move.product_id.id),
+            ("location_id", "child_of", move.location_id.id),
+            ("quantity", ">", 0),
+        ], order="lot_id asc, id asc")
 
     def action_generate_packages(self):
         self.ensure_one()
@@ -102,68 +92,86 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         if move.state in ("done", "cancel"):
             raise UserError(_("Non puoi rigenerare colli su un movimento Done/Cancelled."))
 
-        # Quantità totale richiesta = product_uom_qty (come da richiesta)
-        total_qty = move.product_uom_qty
-        if float_is_zero(total_qty, precision_rounding=move.product_uom.rounding):
-            raise UserError(_("La quantità richiesta è 0, non posso creare colli."))
+        if not self.result_package_id:
+            raise UserError(_("Seleziona un collo di destinazione (esistente)."))
 
-        if not self.quant_id:
-            raise UserError(_("Seleziona 'Pick From' (Quant) per scegliere lotto/posizione."))
+        total_qty = move.product_uom_qty  # richiesto
+        if float_is_zero(total_qty, precision_rounding=move.product_uom.rounding):
+            raise UserError(_("La quantità richiesta è 0, non posso generare righe."))
 
         qty_per_pkg = float(self.qty_per_package)
         if qty_per_pkg <= 0:
             raise UserError(_("La quantità per collo deve essere maggiore di 0."))
 
-        # Calcolo numero colli + resto
-        n_packages = int(total_qty // qty_per_pkg)
-        remainder = total_qty - (n_packages * qty_per_pkg)
-
-        # Se total_qty < qty_per_pkg -> faccio comunque 1 collo con total_qty
-        if n_packages <= 0:
-            n_packages = 1
-            remainder = 0.0
-            qty_first = total_qty
-        else:
-            qty_first = qty_per_pkg
-
-        # 1) Cancello TUTTE le move lines esistenti di questo move
-        # (solo se non done/cancel, ma qui ci siamo già protetti)
+        # 1) cancello tutte le righe esistenti
         move.move_line_ids.unlink()
 
-        Package = self.env["stock.quant.package"]
-        MoveLine = self.env["stock.move.line"]
+        quants = self._get_available_quants(move)
+        if not quants:
+            raise UserError(_("Nessun lotto/quant disponibile nella location sorgente per questo prodotto."))
 
-        base_vals = {
+        # 2) creo righe spezzando per qty_per_package e consumando i quants/lotti in ordine
+        MoveLine = self.env["stock.move.line"]
+        remaining = total_qty
+
+        base_vals_common = {
             "picking_id": move.picking_id.id,
             "move_id": move.id,
             "product_id": move.product_id.id,
             "product_uom_id": move.product_uom.id,
             "location_dest_id": move.location_dest_id.id,
             "company_id": move.company_id.id,
-            # dal quant selezionato:
-            "location_id": self.quant_id.location_id.id,
-            "lot_id": self.quant_id.lot_id.id,
-            "package_id": self.quant_id.package_id.id,
+            "result_package_id": self.result_package_id.id,  # TUTTO nello stesso collo
         }
 
-        # 2) Creo N colli + N righe
-        for i in range(n_packages):
-            pkg = Package.create({})
-            qty = qty_first if i == 0 else qty_per_pkg
-            MoveLine.create({
-                **base_vals,
-                "quantity": qty,
-                "result_package_id": pkg.id,
-            })
+        # somma disponibilità totale (per dare errore pulito se non basta)
+        avail_total = 0.0
+        for q in quants:
+            q_available = q.quantity - q.reserved_quantity
+            if q_available <= 0:
+                continue
+            # convertiamo la quantità del quant (in UoM prodotto) nella UoM del move
+            avail_total += move.product_uom._compute_quantity(q_available, move.product_uom)
 
-        # 3) Se c'è resto, creo un ultimo collo “parziale”
-        # (così la somma torna SEMPRE alla richiesta)
-        if float_compare(remainder, 0.0, precision_rounding=move.product_uom.rounding) > 0:
-            pkg = Package.create({})
-            MoveLine.create({
-                **base_vals,
-                "quantity": remainder,
-                "result_package_id": pkg.id,
-            })
+        if float_compare(avail_total, total_qty, precision_rounding=move.product_uom.rounding) < 0:
+            raise UserError(_(
+                "Quantità disponibile insufficiente.\n"
+                "Richiesta: %(req)s\nDisponibile: %(avail)s"
+            ) % {"req": total_qty, "avail": avail_total})
+
+        for q in quants:
+            if float_compare(remaining, 0.0, precision_rounding=move.product_uom.rounding) <= 0:
+                break
+
+            q_available = q.quantity - q.reserved_quantity
+            if q_available <= 0:
+                continue
+
+            # disponibilità quant convertita nella uom del move
+            q_avail_move_uom = move.product_uom._compute_quantity(q_available, move.product_uom)
+            if float_compare(q_avail_move_uom, 0.0, precision_rounding=move.product_uom.rounding) <= 0:
+                continue
+
+            # finché ho disponibilità su questo quant e mi manca da soddisfare, creo righe
+            while (
+                float_compare(remaining, 0.0, precision_rounding=move.product_uom.rounding) > 0
+                and float_compare(q_avail_move_uom, 0.0, precision_rounding=move.product_uom.rounding) > 0
+            ):
+                qty_line = min(qty_per_pkg, remaining, q_avail_move_uom)
+
+                MoveLine.create({
+                    **base_vals_common,
+                    "location_id": q.location_id.id,
+                    "lot_id": q.lot_id.id,
+                    "package_id": q.package_id.id,
+                    "quantity": qty_line,
+                })
+
+                remaining -= qty_line
+                q_avail_move_uom -= qty_line
+
+        # sicurezza finale
+        if float_compare(remaining, 0.0, precision_rounding=move.product_uom.rounding) > 0:
+            raise UserError(_("Non sono riuscito a coprire tutta la quantità richiesta. Rimanente: %s") % remaining)
 
         return {"type": "ir.actions.act_window_close"}

@@ -1,44 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <!-- Wizard Form View -->
     <record id="view_delivery_auto_create_packages_wizard_form" model="ir.ui.view">
         <field name="name">delivery.auto.create.packages.wizard.form</field>
         <field name="model">delivery.auto.create.packages.wizard</field>
         <field name="arch" type="xml">
             <form string="Genera colli">
                 <group>
-                    <field name="move_id" readonly="1"/>
-                    <field name="qty_per_package"/>
-
-                    <field name="quant_id"
-                           widget="pick_from"
-                           options="{'no_create': True, 'no_open': True}"
-                           domain="[('product_id', '=', product_id), ('location_id', 'child_of', location_id)]"
-                           context="{
-                               'default_location_id': location_id,
-                               'default_product_id': product_id,
-                               'search_view_ref': 'stock.quant_search_view',
-                               'list_view_ref': 'stock.view_stock_quant_tree',
-                               'form_view_ref': 'stock.view_stock_quant_form',
-                               'readonly_form': True
-                           }"
-                    />
+                    <group>
+                        <field name="move_id" invisible="1"/>
+                        <field name="product_id" readonly="1"/>
+                        <field name="picking_id" readonly="1"/>
+                        <field name="location_id" readonly="1"/>
+                        <field name="location_dest_id" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="qty_per_package"/>
+                        <field name="result_package_id"
+                               context="{'picking_id': picking_id}"
+                               domain="['|', ('location_id','=',False), ('location_id','=',location_dest_id)]"
+                               options="{'no_create': True}"/>
+                    </group>
                 </group>
 
                 <footer>
-                    <button name="action_generate_packages" type="object" string="Genera colli" class="btn-primary"/>
-                    <button string="Annulla" class="btn-secondary" special="cancel"/>
+                    <button string="Genera colli"
+                            name="action_generate_packages"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Annulla" special="cancel" class="btn-secondary"/>
                 </footer>
             </form>
         </field>
     </record>
 
+    <!-- Action (XMLID richiesto dal tuo stock_move.py) -->
     <record id="action_delivery_auto_create_packages_wizard" model="ir.actions.act_window">
         <field name="name">Genera colli</field>
         <field name="res_model">delivery.auto.create.packages.wizard</field>
         <field name="view_mode">form</field>
-        <field name="target">new</field>
         <field name="view_id" ref="view_delivery_auto_create_packages_wizard_form"/>
+        <field name="target">new</field>
+        <field name="context">{'default_move_id': active_id}</field>
     </record>
 
 </odoo>

@@ -12,6 +12,9 @@ class StockMove(models.Model):
             "delivery_package_auto_create.action_delivery_auto_create_packages_wizard"
         ).read()[0]
 
-        # Il popup è aperto sullo stock.move (Move Detail)
-        action["context"] = dict(self.env.context, default_move_id=self.id)
+        # Passo il move corrente al wizard
+        action["context"] = dict(self.env.context or {})
+        action["context"].update({
+            "default_move_id": self.id,
+        })
         return action
