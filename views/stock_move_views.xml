@@ -1,27 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <record id="view_stock_move_operations_inherit_generate_packages" model="ir.ui.view">
-        <field name="name">stock.move.operations.form.inherit.generate.packages</field>
-        <field name="model">stock.move</field>
-        <field name="mode">primary</field>
-        <field name="priority">2000</field>
-        <field name="inherit_id" ref="stock.view_stock_move_operations"/>
+    <record id="view_picking_form_add_generate_colli_btn" model="ir.ui.view">
+        <field name="name">stock.picking.form.generate.colli.btn</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="priority">100</field>
         <field name="arch" type="xml">
 
-            <!-- Se il form NON ha footer, lo aggiungiamo dentro form -->
-            <xpath expr="//form" position="inside">
-                <footer>
-                    <!-- Mantengo i bottoni standard -->
-                    <button string="Salva" special="save" class="btn-primary"/>
-                    <button string="Abbandona" special="cancel" class="btn-secondary"/>
-
-                    <!-- Il tuo bottone vicino a Salva -->
-                    <button name="action_open_delivery_auto_create_packages_wizard"
-                            type="object"
-                            string="Genera colli"
-                            class="btn-primary"/>
-                </footer>
+            <!-- Inserisco il bottone come colonna nella list dei move (move_ids_without_package) -->
+<!--            <xpath expr="//field[@name='move_ids_without_package']/list/field[@name='product_uom_qty']" position="after">-->
+            <xpath expr="//list" position="inside">
+                <button type="object"
+                        name="action_open_delivery_auto_create_packages_wizard"
+                        string="Genera Colli"
+                        icon="fa-cubes"
+                        class="btn-link"/>
             </xpath>
 
         </field>

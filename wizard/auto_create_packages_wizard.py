@@ -7,7 +7,7 @@ from odoo.tools.float_utils import float_compare, float_is_zero
 
 class DeliveryAutoCreatePackagesWizard(models.TransientModel):
     _name = "delivery.auto.create.packages.wizard"
-    _description = "Assign move quantities to lots/quants and put everything in ONE existing destination package"
+    _description = "Assign move quantities to quants/lots and put everything in ONE existing destination package"
 
     package_id = fields.Many2one(
         'stock.quant.package', 'Source Package', ondelete='restrict',
@@ -19,6 +19,14 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         check_company=True, index='btree_not_null',
         help="When validating the transfer, the products will be taken from this owner.")
 
+    product_id = fields.Many2one(
+        comodel_name="product.product",
+        string="Prodotto",
+        related="move_id.product_id",
+        readonly=True,
+        store=False,
+    )
+
     move_id = fields.Many2one(
         comodel_name="stock.move",
         string="Move",
@@ -26,9 +34,9 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         readonly=True,
     )
 
+    # Campo tecnico per domain del quant (non lo mostriamo in view)
     product_id = fields.Many2one(
         comodel_name="product.product",
-        string="Prodotto",
         related="move_id.product_id",
         readonly=True,
         store=False,
@@ -69,60 +77,61 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
 
     @api.constrains("qty_per_package")
     def _check_qty_per_package(self):
-        for wizard in self:
-            if wizard.qty_per_package <= 0:
+        for w in self:
+            if w.qty_per_package <= 0:
                 raise UserError(_("La quantità deve essere maggiore di 0."))
 
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
         move_id = res.get("move_id") or self.env.context.get("default_move_id")
-        if move_id:
-            move = self.env["stock.move"].browse(move_id)
+        if not move_id:
+            return res
 
-            if "move_id" in fields_list:
-                res["move_id"] = move_id
+        move = self.env["stock.move"].browse(move_id)
 
-            if "location_id" in fields_list and not res.get("location_id"):
-                res["location_id"] = move.location_id.id
+        if "move_id" in fields_list:
+            res["move_id"] = move_id
 
-            if "location_dest_id" in fields_list and not res.get("location_dest_id"):
-                res["location_dest_id"] = move.location_dest_id.id
+        if "location_id" in fields_list and not res.get("location_id"):
+            res["location_id"] = move.location_id.id
 
-            # default quant: primo disponibile (in python guardo available_quantity, non in domain)
-            if "quant_id" in fields_list and not res.get("quant_id"):
-                quant = self.env["stock.quant"].sudo().search(
-                    [
-                        ("product_id", "=", move.product_id.id),
-                        ("location_id", "child_of", move.location_id.id),
-                        ("quantity", ">", 0),
-                    ],
-                    order="in_date asc, id asc",
-                    limit=1,
-                )
-                if quant:
-                    res["quant_id"] = quant.id
+        if "location_dest_id" in fields_list and not res.get("location_dest_id"):
+            res["location_dest_id"] = move.location_dest_id.id
+
+        # Default quant: primo disponibile FIFO nella location del move
+        if "quant_id" in fields_list and not res.get("quant_id"):
+            quant = self.env["stock.quant"].sudo().search(
+                [
+                    ("product_id", "=", move.product_id.id),
+                    ("location_id", "child_of", move.location_id.id),
+                    ("quantity", ">", 0),
+                ],
+                order="in_date asc, id asc",
+                limit=1,
+            )
+            if quant:
+                res["quant_id"] = quant.id
 
         return res
 
     @api.onchange("quant_id")
     def _onchange_quant_id(self):
         if self.quant_id and self.quant_id.location_id:
-            # allinea la location "Preleva da" alla location del quant selezionato
             self.location_id = self.quant_id.location_id
 
     @api.onchange("location_id")
     def _onchange_location_id(self):
+        # Se cambio location e il quant non è dentro la subtree, lo resetto
         if self.location_id and self.quant_id:
-            ok = bool(self.env["stock.location"].search_count([
-                ("id", "child_of", self.location_id.id),
+            ok = self.env["stock.location"].search_count([
                 ("id", "=", self.quant_id.location_id.id),
-            ]))
+                ("id", "child_of", self.location_id.id),
+            ])
             if not ok:
                 self.quant_id = False
 
     def _get_quants_fifo(self, product, location):
-        """Ritorna quants ordinati FIFO per allocazione."""
         return self.env["stock.quant"].sudo().search(
             [
                 ("product_id", "=", product.id),
@@ -139,9 +148,9 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         if not move:
             raise UserError(_("Move non trovato."))
         if move.state in ("done", "cancel"):
-            raise UserError(_("Non puoi rigenerare colli su un movimento Done/Cancelled."))
+            raise UserError(_("Non puoi rigenerare righe su un movimento Done/Cancelled."))
 
-        total_qty = move.product_uom_qty  # come richiesto: qty richiesta dal move
+        total_qty = move.product_uom_qty
         if float_is_zero(total_qty, precision_rounding=move.product_uom.rounding):
             raise UserError(_("La quantità richiesta è 0, non posso generare righe."))
 
@@ -152,7 +161,7 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
         if qty_step <= 0:
             raise UserError(_("La quantità deve essere maggiore di 0."))
 
-        # 1) Cancello TUTTE le move lines esistenti del move
+        # 1) Cancello tutte le move lines esistenti
         move.move_line_ids.unlink()
 
         MoveLine = self.env["stock.move.line"]
@@ -164,61 +173,46 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
             "product_uom_id": move.product_uom.id,
             "location_dest_id": self.location_dest_id.id,
             "company_id": move.company_id.id,
-            "result_package_id": self.result_package_id.id,  # TUTTO nello stesso collo
+            "result_package_id": self.result_package_id.id,  # tutto nello stesso collo
         }
 
-        # 2) Allocazione su più quants/lotti nella location selezionata
+        # 2) prendo quants FIFO nella location selezionata
         quants = self._get_quants_fifo(move.product_id, self.location_id)
-
         if not quants:
             raise UserError(_("Nessun lotto/quant disponibile nella location selezionata."))
 
-        remaining = total_qty
+        # parto dal quant scelto, poi FIFO sugli altri
+        ordered_quants = self.quant_id + (quants - self.quant_id)
 
-        # Funzione helper: crea una move line usando quel quant
+        remaining = total_qty
+        qi = 0
+
         def _create_ml(qty, quant):
             vals = dict(base_vals)
-            vals.update(
-                {
-                    "quantity": qty,
-                    "location_id": quant.location_id.id,
-                    "lot_id": quant.lot_id.id,
-                    "package_id": quant.package_id.id,
-                    "owner_id": self.owner_id.id if hasattr(self, "owner_id") else False,
-                    # se vuoi anche il quant_id “vero”:
-                    "quant_id": quant.id,
-                }
-            )
+            vals.update({
+                "quantity": qty,
+                "location_id": quant.location_id.id,
+                "lot_id": quant.lot_id.id,
+                "package_id": quant.package_id.id,
+            })
             MoveLine.create(vals)
 
-        # Parto dal quant scelto come “preferito” e poi continuo FIFO sugli altri
-        ordered_quants = []
-        if self.quant_id:
-            ordered_quants.append(self.quant_id)
-        ordered_quants += (quants - self.quant_id) if self.quant_id else quants
-
-        # creo righe a step qty_step finché posso, consumando i quants
-        qi = 0
         while float_compare(remaining, 0.0, precision_rounding=move.product_uom.rounding) > 0:
             if qi >= len(ordered_quants):
-                raise UserError(
-                    _("Quantità insufficiente sui lotti disponibili: manca ancora %s.") % remaining
-                )
+                raise UserError(_("Quantità insufficiente sui lotti disponibili: manca ancora %s.") % remaining)
 
             quant = ordered_quants[qi]
-            avail = quant.available_quantity  # qui posso usarlo, anche se non in domain
+            avail = quant.available_quantity  # ok in python
 
             if float_compare(avail, 0.0, precision_rounding=move.product_uom.rounding) <= 0:
                 qi += 1
                 continue
 
             take = min(qty_step, remaining, avail)
-
             _create_ml(take, quant)
-
             remaining -= take
 
-            # se ho esaurito quel quant passo al prossimo
+            # se esaurito, passa al prossimo
             if float_compare(avail - take, 0.0, precision_rounding=move.product_uom.rounding) <= 0:
                 qi += 1
 

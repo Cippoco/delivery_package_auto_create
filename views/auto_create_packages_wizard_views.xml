@@ -5,56 +5,45 @@
         <field name="name">delivery.auto.create.packages.wizard.form</field>
         <field name="model">delivery.auto.create.packages.wizard</field>
         <field name="arch" type="xml">
-            <form string="Genera righe / colli (1 collo di destinazione)">
+            <form string="Genera colli">
                 <sheet>
-
-                    <!-- campi tecnici necessari al domain -->
+                    <!-- campo tecnico, non mostrato -->
                     <field name="move_id" invisible="1"/>
                     <field name="product_id" invisible="1"/>
 
                     <group>
-                        <group>
-                            <field name="location_id"/>
-                            <field name="location_dest_id"/>
-                            <field name="qty_per_package"/>
-                        </group>
-
-                        <group>
-                            <!-- DOMAIN ROBUSTO: anche se product_id/location_id fossero temporaneamente vuoti non esplode -->
-                            <field name="quant_id"
-                                   widget="pick_from"
-                                   domain="[
-                                        '&amp;', ('quantity','&gt;',0),
-                                        '|', ('product_id','=',product_id), ('id','=',False),
-                                        '|', ('location_id','child_of',location_id), ('id','=',False)
-                                   ]"
-                                   context="{
-                                        'default_location_id': location_id,
-                                        'default_product_id': product_id,
-                                        'search_view_ref': 'stock.quant_search_view',
-                                        'list_view_ref': 'stock.view_stock_quant_tree',
-                                        'form_view_ref': 'stock.view_stock_quant_form',
-                                        'readonly_form': True
-                                   }"
-                                   options="{'no_create': True, 'no_open': True}"/>
-
-                            <field name="result_package_id"
-                                   context="{'picking_id': move_id and move_id.picking_id or False}"
-                                   domain="['|', ('location_id','=',False), ('location_id','=',location_dest_id)]"
-                                   options="{'no_create': True}"/>
-                        </group>
+                        <field name="qty_per_package"/>
+                        <field name="location_id"/>
+                        <field name="quant_id"
+                               domain="[('product_id', '=', product_id), ('location_id', 'child_of', location_id), ('quantity', '&gt;', 0)]"
+                               context="{'default_location_id': location_id, 'default_product_id': product_id,
+                                         'search_view_ref': 'stock.quant_search_view',
+                                         'list_view_ref': 'stock.view_stock_quant_tree',
+                                         'form_view_ref': 'stock.view_stock_quant_form',
+                                         'readonly_form': True}"
+                               widget="pick_from"
+                               options="{'no_create': True, 'no_open': True}"/>
+                        <field name="location_dest_id"/>
+                        <field name="result_package_id"
+                               context="{'picking_id': move_id.picking_id}"
+                               options="{'no_create': True}"/>
                     </group>
-
                 </sheet>
 
-                <!-- bottoni in basso: Salva + Genera colli affiancati -->
                 <footer>
-                    <button string="Salva" special="save" class="btn-primary"/>
-                    <button name="action_generate_packages" type="object" string="Genera colli" class="btn-primary"/>
-                    <button string="Annulla" special="cancel" class="btn-secondary"/>
+                    <button name="action_generate_packages" type="object" class="btn-primary" string="Genera colli"/>
+                    <button string="Annulla" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>
         </field>
+    </record>
+
+    <record id="action_delivery_auto_create_packages_wizard" model="ir.actions.act_window">
+        <field name="name">Genera colli</field>
+        <field name="res_model">delivery.auto.create.packages.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{}</field>
     </record>
 
 </odoo>
