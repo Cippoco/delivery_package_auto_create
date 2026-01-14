@@ -6,7 +6,7 @@
     "license": "OPL-1",
     "summary": "Patch per aggiungere automaticamente il numero colli in base alla quantità prodotti",
     "category": "Warehouse Management",
-    "depends": ["stock", "delivery"],
+    "depends": ["stock"],
     "data": [
         "security/ir.model.access.csv",
         "views/auto_create_packages_wizard_views.xml",
