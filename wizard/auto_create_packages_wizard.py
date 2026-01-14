@@ -9,6 +9,8 @@ class DeliveryAutoCreatePackagesWizard(models.TransientModel):
     _name = "delivery.auto.create.packages.wizard"
     _description = "Assign move quantities to quants/lots and put everything in ONE existing destination package"
 
+    sequence = fields.Integer(default=10)
+
     package_id = fields.Many2one(
         'stock.quant.package', 'Source Package', ondelete='restrict',
         check_company=True,
