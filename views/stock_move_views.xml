@@ -3,22 +3,20 @@
 
     <record id="view_picking_form_add_generate_colli_btn" model="ir.ui.view">
         <field name="name">stock.picking.form.generate.colli.btn</field>
-        <field name="model">stock.move</field>
-        <field name="inherit_id" ref="stock.view_stock_move_operations"/>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <!--   funziona     <field name="inherit_id" ref="stock.view_stock_move_operations"/>-->
         <!--        <field name="priority">100</field>-->
         <field name="arch" type="xml">
 
             <!-- Inserisco il bottone come colonna nella list dei move (move_ids_without_package) -->
-<!--            <xpath expr="//field[@name='name']" position="after">-->
-            <xpath expr="//field[@name='product_uom_qty']" position="after">
-                <!--            <xpath expr="//list" position="inside">-->
-                <span>
-                    <button type="object"
-                            name="action_open_delivery_auto_create_packages_wizard"
-                            string="Genera Colli"
-                            icon="fa-cubes"
-                            class="btn-link"/>
-                </span>
+            <!--            <xpath expr="//field[@name='product_id']" position="after">-->
+            <xpath expr="//list" position="inside">
+                <button type="object"
+                        name="action_open_delivery_auto_create_packages_wizard"
+                        string="Genera Colli"
+                        icon="fa-cubes"
+                        class="btn-link"/>
             </xpath>
 
         </field>
