@@ -1,2 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_delivery_auto_create_packages_wizard_user,delivery.auto.create.packages.wizard,model_delivery_auto_create_packages_wizard,stock.group_stock_user,1,1,1,1
+access_delivery_auto_create_packages_wizard_user,delivery.auto.create.packages.wizard,model_delivery_auto_create_packages_wizard,base.group_user,1,1,1,0
