@@ -26,7 +26,7 @@
                         <field name="location_dest_id"/>
                         <field name="result_package_id"
                                context="{'picking_id': move_id.picking_id}"
-                               options="{'no_create': True}"/>
+                               />
                     </group>
                 </sheet>
 
